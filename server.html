@@ -120,7 +120,7 @@ body{max-width:480px!important;margin:0 auto!important;min-height:100vh;box-shad
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0b0810">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="APURBO DEV">
+<meta name="apple-mobile-web-app-title" content="ApurboCloud">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/favicon-64.png">
 <style>html.desktop body{max-width:100%!important;margin:0!important}</style>
@@ -131,7 +131,7 @@ body{max-width:480px!important;margin:0 auto!important;min-height:100vh;box-shad
 
     <header>
         <div class="logo">
-            <span class="logo-skull">APURBO DEV 👑</span>
+            <span class="logo-skull">ApurboCloud 👑</span>
             <span class="logo-name">{{ site_name }}</span>
         </div>
         <a href="/logout" class="btn btn-red">↳ Logout</a>
@@ -244,10 +244,14 @@ body{max-width:480px!important;margin:0 auto!important;min-height:100vh;box-shad
 
                 <div id="fileListContainer" style="max-height: 220px; overflow-y: auto;">
                     {% if files %}
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;color:var(--ac)">
+                            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="selectAllFiles" onchange="toggleAllFiles(this.checked)"> SELECT ALL</label>
+                            <button id="bulkDeleteBtn" type="button" onclick="deleteSelectedFiles()" class="btn btn-red" style="padding:4px 10px;font-size:10px" disabled>🗑 DELETE SELECTED (0)</button>
+                        </div>
                         <ul style="list-style:none;padding:0;margin:0">
                             {% for file in files %}
                             <li style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(10, 0, 21, 0.6);border:1px solid var(--ac-dim);border-radius:6px;margin-bottom:6px;font-size:11px;color:var(--ac)">
-                                <span>📄 {{ file.name if file.name is defined else file }}</span>
+                                <label style="display:flex;align-items:center;gap:8px;min-width:0;cursor:pointer"><input type="checkbox" class="file-check" value="{{ file.path if file.path is defined else file }}"> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 {{ file.name if file.name is defined else file }}</span></label>
                                 <button onclick="deleteFile('{{ file.path if file.path is defined else file }}')" class="btn btn-red" style="padding:2px 8px;font-size:9px">🗑 DELETE</button>
                             </li>
                             {% endfor %}
@@ -455,6 +459,50 @@ body{max-width:480px!important;margin:0 auto!important;min-height:100vh;box-shad
                 body: JSON.stringify({ main_file: mf, main_command: mc })
             });
             alert('Settings saved successfully!');
+        }
+
+        // Multi-select delete
+        function selectedFileValues() {
+            return Array.from(document.querySelectorAll('.file-check:checked')).map(c => c.value);
+        }
+        function updateBulkUI() {
+            const all = document.querySelectorAll('.file-check');
+            const sel = selectedFileValues();
+            const btn = document.getElementById('bulkDeleteBtn');
+            if (btn) {
+                btn.disabled = sel.length === 0;
+                btn.textContent = '🗑 DELETE SELECTED (' + sel.length + ')';
+            }
+            const sa = document.getElementById('selectAllFiles');
+            if (sa) sa.checked = all.length > 0 && sel.length === all.length;
+        }
+        function toggleAllFiles(v) {
+            document.querySelectorAll('.file-check').forEach(c => c.checked = v);
+            updateBulkUI();
+        }
+        document.addEventListener('change', function (e) {
+            if (e.target && e.target.classList && e.target.classList.contains('file-check')) updateBulkUI();
+        });
+        async function deleteSelectedFiles() {
+            const files = selectedFileValues();
+            if (!files.length) return;
+            if (!confirm(files.length + ' ta file/folder delete korben?')) return;
+            try {
+                const res = await fetch('/server/{{ server_name }}/files/delete-bulk', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ filenames: files })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    if (d.failed && d.failed.length) alert(d.deleted + ' ta delete hoyeche, ' + d.failed.length + ' ta hoy nai.');
+                    location.reload();
+                } else {
+                    alert(d.error || 'Could not delete files.');
+                }
+            } catch (e) {
+                alert('Error deleting files.');
+            }
         }
 
         // Delete Uploaded File

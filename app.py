@@ -47,7 +47,12 @@ RUNNING_PROCESSES = {}
 def load_data():
     if DATA_FILE.exists():
         try:
-            return json.loads(DATA_FILE.read_text())
+            data = json.loads(DATA_FILE.read_text())
+            # SITE_NAME env set thakle sheta sob jaygay dekhabe (purono data.json er naam overwrite kore)
+            env_name = os.environ.get("SITE_NAME")
+            if env_name:
+                data.setdefault("settings", {})["site_name"] = env_name
+            return data
         except Exception:
             pass
     return {
@@ -58,7 +63,7 @@ def load_data():
             "maintenance_msg": "System under maintenance.",
             "theme_color": "#f04452",
             "normal_password": NORMAL_PASSWORD,
-            "site_name": "APURBO DEV",
+            "site_name": "ApurboCloud",
             "auto_restart_interval": 300
         }
     }
@@ -88,7 +93,7 @@ def login_required(f):
         data = load_data()
         settings = data.get("settings", {})
         if settings.get("maintenance"):
-            return render_template("maintenance.html", message=settings.get("maintenance_msg", "Under maintenance"), site_name=settings.get("site_name", "APURBO DEV"), theme_color=get_theme_color())
+            return render_template("maintenance.html", message=settings.get("maintenance_msg", "Under maintenance"), site_name=settings.get("site_name", "ApurboCloud"), theme_color=get_theme_color())
         return f(*args, **kwargs)
     return decorated
 
@@ -437,7 +442,7 @@ threading.Thread(target=auto_restart_monitor, daemon=True).start()
 USERNAME_RE = re.compile(r"^[a-z0-9_.-]{2,20}$")
 
 def site_name_value():
-    return load_data().get("settings", {}).get("site_name", "APURBO DEV")
+    return load_data().get("settings", {}).get("site_name", "ApurboCloud")
 
 @app.route("/")
 def landing():
@@ -477,7 +482,7 @@ def login():
 
     data = load_data()
     settings = data.get("settings", {})
-    site_name = settings.get("site_name", "APURBO DEV")
+    site_name = settings.get("site_name", "ApurboCloud")
 
     if request.method == "POST":
         username = request.form.get("username", "").strip().lower()
@@ -512,7 +517,7 @@ def _register_impl():
 
     data = load_data()
     settings = data.get("settings", {})
-    site_name = settings.get("site_name", "APURBO DEV")
+    site_name = settings.get("site_name", "ApurboCloud")
     access_code = settings.get("normal_password", NORMAL_PASSWORD)
 
     if request.method == "POST":
@@ -574,7 +579,7 @@ def dashboard():
     username = session["username"]
     data = load_data()
     settings = data.get("settings", {})
-    site_name = settings.get("site_name", "APURBO DEV")
+    site_name = settings.get("site_name", "ApurboCloud")
     user_servers = {k: v for k, v in data["servers"].items() if v.get("owner") == username}
     changed = False
     for name, cfg in user_servers.items():
@@ -1140,6 +1145,34 @@ def delete_file(name):
         target.unlink()
     return jsonify({"success": True})
 
+@app.route("/server/<name>/files/delete-bulk", methods=["POST"])
+@login_required
+def delete_files_bulk(name):
+    data = load_data()
+    cfg = data["servers"].get(name)
+    if not cfg or cfg.get("owner") != session["username"]:
+        return jsonify({"success": False, "error": "Access denied"}), 403
+    names = (request.get_json() or {}).get("filenames", [])
+    if not isinstance(names, list) or not names:
+        return jsonify({"success": False, "error": "Kono file select kora nai"}), 400
+    base = (SERVERS_DIR / name / "extracted").resolve()
+    deleted, failed = 0, []
+    for rel in names:
+        rel = str(rel).strip()
+        target = (base / rel).resolve() if rel else None
+        if not target or base not in target.parents or not target.exists():
+            failed.append(rel)
+            continue
+        try:
+            if target.is_dir():
+                shutil.rmtree(target, ignore_errors=True)
+            else:
+                target.unlink()
+            deleted += 1
+        except OSError:
+            failed.append(rel)
+    return jsonify({"success": True, "deleted": deleted, "failed": failed})
+
 @app.route("/server/<name>/packages/remove", methods=["POST"])
 @login_required
 def remove_package(name):
@@ -1180,6 +1213,9 @@ _HOP_HEADERS = {"host", "connection", "keep-alive", "transfer-encoding", "te", "
                 "upgrade", "proxy-authorization", "proxy-authenticate", "content-length", "content-encoding"}
 
 def _public_base():
+    custom = os.environ.get("PUBLIC_BASE_URL")  # jemon https://host.apurbo.indevs.in
+    if custom:
+        return custom.rstrip("/")
     dom = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
     if dom:
         return dom if dom.startswith("http") else f"https://{dom}"

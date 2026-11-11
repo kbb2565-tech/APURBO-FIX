@@ -1,7 +1,7 @@
 {
-  "name": "APURBO DEV",
-  "short_name": "APURBO DEV",
-  "description": "APURBO DEV hosting panel",
+  "name": "ApurboCloud",
+  "short_name": "ApurboCloud",
+  "description": "ApurboCloud hosting panel",
   "id": "/",
   "start_url": "/dashboard",
   "scope": "/",
